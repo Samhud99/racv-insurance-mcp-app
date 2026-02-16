@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "racv-insurance": {
+      "command": "node",
+      "args": ["/PATH/TO/AInsurance/dist/stdio.js"]
+    }
+  }
+}

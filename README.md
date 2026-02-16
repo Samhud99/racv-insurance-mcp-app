@@ -92,11 +92,41 @@ This uses Playwright to automate the RACV quoting form at `my.racv.com.au`. Fall
 
 ## Platform Integration
 
+### Claude Desktop (Recommended Demo)
+
+1. Start the server:
+   ```bash
+   npm run build && npm start
+   ```
+
+2. Add to Claude Desktop's MCP config.
+
+   **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+   **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+
+   Merge the contents of `claude-desktop-config.json` from this repo into your config, replacing the path with where you cloned the repo:
+   ```json
+   {
+     "mcpServers": {
+       "racv-insurance": {
+         "command": "node",
+         "args": ["/PATH/TO/AInsurance/dist/stdio.js"]
+       }
+     }
+   }
+   ```
+
+3. Restart Claude Desktop (Cmd+Q then reopen, or File > Quit).
+
+4. Try these prompts:
+   - *"Get me a car insurance quote for a 2022 Toyota Corolla in Melbourne 3000"*
+   - *"What does RACV comprehensive car insurance cover?"*
+   - *"I want to get a full quote for a 2023 Mazda CX-5 in Geelong 3220"*
+
+You should see the RACV-branded quote widget appear inline in the chat.
+
 ### ChatGPT
 Point the ChatGPT Apps SDK to your deployed `/mcp` endpoint.
-
-### Claude
-Compatible with Claude MCP Apps via the same `/mcp` endpoint.
 
 ### Widgets
 Quote result and coverage widgets are served from `/widget/` and render inside sandboxed iframes in AI chat interfaces.

@@ -1,0 +1,135 @@
+{
+  "Toyota": {
+    "Corolla": { "category": "economy", "base_value": 28000 },
+    "Camry": { "category": "midrange", "base_value": 38000 },
+    "RAV4": { "category": "midrange", "base_value": 42000 },
+    "Yaris": { "category": "economy", "base_value": 22000 },
+    "Kluger": { "category": "premium", "base_value": 55000 },
+    "LandCruiser": { "category": "premium", "base_value": 90000 },
+    "HiLux": { "category": "midrange", "base_value": 48000 },
+    "GR86": { "category": "performance", "base_value": 40000 },
+    "Supra": { "category": "performance", "base_value": 75000 },
+    "C-HR": { "category": "economy", "base_value": 33000 }
+  },
+  "Mazda": {
+    "CX-5": { "category": "midrange", "base_value": 40000 },
+    "CX-3": { "category": "economy", "base_value": 30000 },
+    "CX-30": { "category": "midrange", "base_value": 35000 },
+    "CX-60": { "category": "premium", "base_value": 55000 },
+    "CX-90": { "category": "premium", "base_value": 70000 },
+    "Mazda3": { "category": "economy", "base_value": 30000 },
+    "Mazda2": { "category": "economy", "base_value": 24000 },
+    "MX-5": { "category": "performance", "base_value": 42000 },
+    "BT-50": { "category": "midrange", "base_value": 45000 }
+  },
+  "Hyundai": {
+    "i30": { "category": "economy", "base_value": 27000 },
+    "Tucson": { "category": "midrange", "base_value": 40000 },
+    "Kona": { "category": "economy", "base_value": 32000 },
+    "Santa Fe": { "category": "premium", "base_value": 52000 },
+    "i20": { "category": "economy", "base_value": 22000 },
+    "Palisade": { "category": "premium", "base_value": 65000 },
+    "i30 N": { "category": "performance", "base_value": 48000 },
+    "Ioniq 5": { "category": "premium", "base_value": 58000 },
+    "Ioniq 6": { "category": "premium", "base_value": 55000 }
+  },
+  "Kia": {
+    "Cerato": { "category": "economy", "base_value": 27000 },
+    "Sportage": { "category": "midrange", "base_value": 40000 },
+    "Seltos": { "category": "economy", "base_value": 32000 },
+    "Sorento": { "category": "premium", "base_value": 52000 },
+    "Carnival": { "category": "premium", "base_value": 55000 },
+    "Stinger": { "category": "performance", "base_value": 55000 },
+    "EV6": { "category": "premium", "base_value": 60000 },
+    "Picanto": { "category": "economy", "base_value": 18000 }
+  },
+  "Ford": {
+    "Ranger": { "category": "midrange", "base_value": 48000 },
+    "Everest": { "category": "premium", "base_value": 58000 },
+    "Puma": { "category": "economy", "base_value": 33000 },
+    "Mustang": { "category": "performance", "base_value": 65000 },
+    "Escape": { "category": "midrange", "base_value": 38000 }
+  },
+  "Volkswagen": {
+    "Golf": { "category": "midrange", "base_value": 38000 },
+    "Tiguan": { "category": "midrange", "base_value": 42000 },
+    "T-Roc": { "category": "midrange", "base_value": 38000 },
+    "Polo": { "category": "economy", "base_value": 28000 },
+    "Golf R": { "category": "performance", "base_value": 62000 },
+    "Amarok": { "category": "premium", "base_value": 60000 },
+    "Touareg": { "category": "luxury", "base_value": 85000 }
+  },
+  "BMW": {
+    "3 Series": { "category": "luxury", "base_value": 70000 },
+    "X1": { "category": "luxury", "base_value": 58000 },
+    "X3": { "category": "luxury", "base_value": 75000 },
+    "X5": { "category": "luxury", "base_value": 105000 },
+    "1 Series": { "category": "premium", "base_value": 52000 },
+    "M3": { "category": "performance", "base_value": 130000 },
+    "M4": { "category": "performance", "base_value": 140000 },
+    "iX": { "category": "luxury", "base_value": 120000 }
+  },
+  "Mercedes-Benz": {
+    "A-Class": { "category": "luxury", "base_value": 55000 },
+    "C-Class": { "category": "luxury", "base_value": 75000 },
+    "E-Class": { "category": "luxury", "base_value": 105000 },
+    "GLA": { "category": "luxury", "base_value": 58000 },
+    "GLC": { "category": "luxury", "base_value": 80000 },
+    "GLE": { "category": "luxury", "base_value": 110000 },
+    "AMG A45": { "category": "performance", "base_value": 90000 }
+  },
+  "Audi": {
+    "A3": { "category": "luxury", "base_value": 52000 },
+    "A4": { "category": "luxury", "base_value": 68000 },
+    "Q3": { "category": "luxury", "base_value": 55000 },
+    "Q5": { "category": "luxury", "base_value": 72000 },
+    "Q7": { "category": "luxury", "base_value": 100000 },
+    "RS3": { "category": "performance", "base_value": 90000 },
+    "e-tron": { "category": "luxury", "base_value": 85000 }
+  },
+  "Subaru": {
+    "Outback": { "category": "midrange", "base_value": 42000 },
+    "Forester": { "category": "midrange", "base_value": 40000 },
+    "XV": { "category": "midrange", "base_value": 35000 },
+    "Impreza": { "category": "economy", "base_value": 28000 },
+    "WRX": { "category": "performance", "base_value": 48000 },
+    "BRZ": { "category": "performance", "base_value": 40000 }
+  },
+  "Mitsubishi": {
+    "Outlander": { "category": "midrange", "base_value": 42000 },
+    "ASX": { "category": "economy", "base_value": 30000 },
+    "Triton": { "category": "midrange", "base_value": 42000 },
+    "Eclipse Cross": { "category": "midrange", "base_value": 35000 },
+    "Pajero Sport": { "category": "premium", "base_value": 52000 }
+  },
+  "Honda": {
+    "Civic": { "category": "economy", "base_value": 32000 },
+    "HR-V": { "category": "economy", "base_value": 34000 },
+    "CR-V": { "category": "midrange", "base_value": 42000 },
+    "ZR-V": { "category": "midrange", "base_value": 40000 },
+    "Civic Type R": { "category": "performance", "base_value": 55000 }
+  },
+  "Nissan": {
+    "X-Trail": { "category": "midrange", "base_value": 40000 },
+    "Qashqai": { "category": "midrange", "base_value": 38000 },
+    "Navara": { "category": "midrange", "base_value": 45000 },
+    "Juke": { "category": "economy", "base_value": 30000 },
+    "Patrol": { "category": "premium", "base_value": 80000 },
+    "Z": { "category": "performance", "base_value": 60000 }
+  },
+  "Tesla": {
+    "Model 3": { "category": "premium", "base_value": 55000 },
+    "Model Y": { "category": "premium", "base_value": 62000 },
+    "Model S": { "category": "luxury", "base_value": 130000 },
+    "Model X": { "category": "luxury", "base_value": 140000 },
+    "Cybertruck": { "category": "premium", "base_value": 95000 }
+  },
+  "Suzuki": {
+    "Swift": { "category": "economy", "base_value": 20000 },
+    "Vitara": { "category": "economy", "base_value": 28000 },
+    "Jimny": { "category": "economy", "base_value": 30000 },
+    "Baleno": { "category": "economy", "base_value": 22000 },
+    "Swift Sport": { "category": "performance", "base_value": 30000 },
+    "S-Cross": { "category": "economy", "base_value": 30000 }
+  }
+}

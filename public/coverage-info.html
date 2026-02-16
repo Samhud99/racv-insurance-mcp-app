@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RACV Coverage Details</title>
+  <style>
+    :root {
+      --racv-navy: #1B3A5C;
+      --racv-red: #E31937;
+      --racv-white: #FFFFFF;
+      --racv-light-grey: #F5F6F8;
+      --racv-mid-grey: #E0E3E8;
+      --racv-dark-grey: #4A5568;
+      --racv-text: #1A202C;
+      --racv-green: #22A559;
+      --racv-amber: #D69E2E;
+      --radius: 10px;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, sans-serif;
+      background: var(--racv-white);
+      color: var(--racv-text);
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .widget {
+      max-width: 520px;
+      margin: 0 auto;
+      border: 1px solid var(--racv-mid-grey);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    .header {
+      background: var(--racv-navy);
+      color: var(--racv-white);
+      padding: 18px 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .header-icon {
+      width: 32px;
+      height: 32px;
+      flex-shrink: 0;
+    }
+
+    .header h1 {
+      font-size: 16px;
+      font-weight: 700;
+    }
+
+    .tabs {
+      display: flex;
+      border-bottom: 1px solid var(--racv-mid-grey);
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .tab {
+      padding: 12px 16px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--racv-dark-grey);
+      border: none;
+      background: none;
+      cursor: pointer;
+      white-space: nowrap;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s;
+    }
+
+    .tab:hover { color: var(--racv-navy); }
+
+    .tab.active {
+      color: var(--racv-navy);
+      border-bottom-color: var(--racv-red);
+    }
+
+    .content {
+      padding: 20px 24px;
+    }
+
+    .content h2 {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--racv-navy);
+      margin-bottom: 14px;
+    }
+
+    .detail-list {
+      list-style: none;
+    }
+
+    .detail-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--racv-light-grey);
+      font-size: 14px;
+    }
+
+    .detail-list li:last-child {
+      border-bottom: none;
+    }
+
+    .detail-list .icon {
+      flex-shrink: 0;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: 1px;
+    }
+
+    .icon-include { background: var(--racv-green); }
+    .icon-exclude { background: var(--racv-red); }
+    .icon-info { background: var(--racv-navy); }
+    .icon-extra { background: var(--racv-amber); }
+
+    .icon svg {
+      width: 12px;
+      height: 12px;
+    }
+
+    .footer {
+      padding: 14px 24px;
+      background: var(--racv-light-grey);
+      border-top: 1px solid var(--racv-mid-grey);
+    }
+
+    .footer p {
+      font-size: 11px;
+      color: var(--racv-dark-grey);
+      line-height: 1.6;
+    }
+
+    .footer a {
+      color: var(--racv-navy);
+      text-decoration: underline;
+    }
+
+    @media (max-width: 400px) {
+      .header { padding: 14px 18px; }
+      .content { padding: 16px 18px; }
+      .tab { padding: 10px 12px; font-size: 11px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="widget" role="main" aria-label="RACV Coverage Details">
+    <div class="header">
+      <svg class="header-icon" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+        <circle cx="16" cy="16" r="14" stroke="white" stroke-width="2"/>
+        <path d="M16 10v8M16 21v1" stroke="white" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      <h1>Coverage Details</h1>
+    </div>
+
+    <div class="tabs" role="tablist" aria-label="Coverage areas">
+      <button class="tab active" role="tab" aria-selected="true" data-area="standard_inclusions">Inclusions</button>
+      <button class="tab" role="tab" aria-selected="false" data-area="optional_extras">Extras</button>
+      <button class="tab" role="tab" aria-selected="false" data-area="exclusions">Exclusions</button>
+      <button class="tab" role="tab" aria-selected="false" data-area="excess_options">Excess</button>
+      <button class="tab" role="tab" aria-selected="false" data-area="claims_process">Claims</button>
+    </div>
+
+    <div class="content" id="contentArea">
+      <h2 id="areaTitle">Loading...</h2>
+      <ul class="detail-list" id="detailList" aria-label="Coverage details"></ul>
+    </div>
+
+    <div class="footer">
+      <p>For full details, refer to the <a href="https://www.racv.com.au/car-insurance/comprehensive-car-insurance/pds.html" target="_blank" rel="noopener">Product Disclosure Statement (PDS)</a>. This information is general in nature and does not constitute personal financial advice.</p>
+    </div>
+  </div>
+
+  <script>
+    const coverageData = {
+      standard_inclusions: {
+        title: 'Standard Coverage Inclusions',
+        icon: 'include',
+        details: [
+          'Accident damage — cover for damage to your car caused by a collision, whether at fault or not',
+          'Fire and theft — protection if your car is stolen or damaged by fire',
+          'Storm, flood and hail damage — cover for weather-related damage',
+          'Windscreen and window glass — repair or replacement with no excess for repairs',
+          'Malicious damage and vandalism — cover for intentional damage by others',
+          'Personal items — up to $1,000 for belongings stolen from or damaged in your car',
+          'Emergency accommodation & transport — up to $1,500 when your car is undriveable 100km+ from home',
+          'New car replacement — replaced with a new car of same make/model if less than 2 years old and written off',
+          'Lifetime repair guarantee — repairs by RACV approved repairers guaranteed for life of ownership',
+          'Towing — reasonable costs to nearest repairer or safe location',
+          'Third party property damage — up to $20 million for damage to others\' property',
+          '24/7 claims support — lodge and manage claims anytime'
+        ]
+      },
+      optional_extras: {
+        title: 'Optional Extras',
+        icon: 'extra',
+        details: [
+          'Hire car after an incident — up to 30 days while your car is repaired or if stolen',
+          'Hire car after not-at-fault incident — at no additional cost when not your fault',
+          'Roadside assistance — RACV roadside assistance bundled with your policy',
+          'Agreed value — lock in the payout amount at policy start rather than market value',
+          'Reduced excess for named drivers — lower excess by nominating experienced drivers',
+          'Trailer and caravan cover — damage to trailer or caravan while attached to your car',
+          'Tools of trade — increased cover up to $5,000 for work tools and equipment'
+        ]
+      },
+      exclusions: {
+        title: 'Key Exclusions',
+        icon: 'exclude',
+        details: [
+          'Mechanical or electrical failure not caused by an insured incident',
+          'Wear and tear, rust, corrosion, or gradual deterioration',
+          'Damage from ride-share, hire, or racing/speed testing use',
+          'Intentional damage caused by you or with your consent',
+          'Driving under the influence of alcohol or drugs',
+          'Driving without a valid licence for the vehicle class',
+          'Pre-existing damage not disclosed at purchase',
+          'Use of the car for an unlawful purpose',
+          'Tyre damage from punctures, cuts, or bursts (unless part of a larger claim)',
+          'Diminution in value after repair',
+          'Refer to the full PDS for all exclusions and conditions'
+        ]
+      },
+      excess_options: {
+        title: 'Excess Options',
+        icon: 'info',
+        details: [
+          'Standard excess ($650) — default excess for most claims',
+          'Voluntary excess ($800) — reduce premium by approx. 3%',
+          'Higher voluntary excess ($1,000) — reduce premium by approx. 7%',
+          'Maximum voluntary excess ($1,500) — reduce premium by approx. 12%',
+          'Age excess — additional $400-$900 for drivers under 25',
+          'Inexperienced driver excess — additional $400 if licence held less than 2 years',
+          'Note: excesses are cumulative (e.g. standard + age + inexperienced)'
+        ]
+      },
+      claims_process: {
+        title: 'How to Make a Claim',
+        icon: 'info',
+        details: [
+          '1. Report the incident — call 13 19 03 (24/7) or lodge online at racv.com.au/claims',
+          '2. Provide details — policy number, incident details, photos, police report number',
+          '3. Assessment — RACV assesses your claim and may arrange an inspection',
+          '4. Repair — choose an RACV approved repairer for lifetime guarantee',
+          '5. Excess payment — pay your excess directly to the repairer',
+          '6. Settlement — if total loss, RACV pays agreed or market value minus excess',
+          'Average claim processing: 1-3 business days for straightforward claims',
+          'Urgent assistance: towing and emergency support available immediately'
+        ]
+      }
+    };
+
+    // Listen for postMessage data
+    window.addEventListener('message', (event) => {
+      try {
+        const msg = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+        if (msg?.data?.area && coverageData[msg.data.area]) {
+          showArea(msg.data.area);
+        }
+      } catch (e) {}
+    });
+
+    // Tab click handlers
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        const area = tab.getAttribute('data-area');
+        showArea(area);
+      });
+    });
+
+    function showArea(areaKey) {
+      const data = coverageData[areaKey];
+      if (!data) return;
+
+      // Update tabs
+      document.querySelectorAll('.tab').forEach(t => {
+        const isActive = t.getAttribute('data-area') === areaKey;
+        t.classList.toggle('active', isActive);
+        t.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      });
+
+      // Update content
+      document.getElementById('areaTitle').textContent = data.title;
+
+      const list = document.getElementById('detailList');
+      list.innerHTML = '';
+
+      const svgCheck = '<svg viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+      const svgX = '<svg viewBox="0 0 12 12" fill="none"><path d="M3 3l6 6M9 3l-6 6" stroke="white" stroke-width="2" stroke-linecap="round"/></svg>';
+      const svgInfo = '<svg viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="5" stroke="white" stroke-width="1.5"/><path d="M6 5v4M6 3.5v.5" stroke="white" stroke-width="1.5" stroke-linecap="round"/></svg>';
+      const svgStar = '<svg viewBox="0 0 12 12" fill="none"><path d="M6 1l1.5 3 3.3.5-2.4 2.3.6 3.2L6 8.5 3 10l.6-3.2L1.2 4.5l3.3-.5L6 1z" fill="white"/></svg>';
+
+      const iconMap = { include: svgCheck, exclude: svgX, info: svgInfo, extra: svgStar };
+      const classMap = { include: 'icon-include', exclude: 'icon-exclude', info: 'icon-info', extra: 'icon-extra' };
+
+      data.details.forEach(detail => {
+        const li = document.createElement('li');
+        li.innerHTML = `
+          <div class="icon ${classMap[data.icon]}" aria-hidden="true">${iconMap[data.icon]}</div>
+          <span>${detail}</span>
+        `;
+        list.appendChild(li);
+      });
+    }
+
+    // Show default tab
+    showArea('standard_inclusions');
+
+    // Check URL params
+    const params = new URLSearchParams(window.location.search);
+    const areaParam = params.get('area');
+    if (areaParam && coverageData[areaParam]) {
+      showArea(areaParam);
+    }
+  </script>
+</body>
+</html>

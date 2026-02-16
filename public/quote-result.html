@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RACV Insurance Quote</title>
+  <style>
+    :root {
+      --racv-navy: #1B3A5C;
+      --racv-red: #E31937;
+      --racv-white: #FFFFFF;
+      --racv-light-grey: #F5F6F8;
+      --racv-mid-grey: #E0E3E8;
+      --racv-dark-grey: #4A5568;
+      --racv-text: #1A202C;
+      --racv-green: #22A559;
+      --radius: 10px;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, sans-serif;
+      background: var(--racv-white);
+      color: var(--racv-text);
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .widget {
+      max-width: 520px;
+      margin: 0 auto;
+      border: 1px solid var(--racv-mid-grey);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    /* Header */
+    .header {
+      background: var(--racv-navy);
+      color: var(--racv-white);
+      padding: 20px 24px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .logo {
+      flex-shrink: 0;
+    }
+
+    .logo svg {
+      width: 48px;
+      height: 48px;
+    }
+
+    .header-text h1 {
+      font-size: 17px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+
+    .header-text p {
+      font-size: 13px;
+      opacity: 0.85;
+      margin-top: 2px;
+    }
+
+    /* Vehicle info */
+    .vehicle-bar {
+      background: var(--racv-light-grey);
+      padding: 12px 24px;
+      font-size: 14px;
+      color: var(--racv-dark-grey);
+      border-bottom: 1px solid var(--racv-mid-grey);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .vehicle-bar strong {
+      color: var(--racv-text);
+    }
+
+    .vehicle-value {
+      font-size: 13px;
+    }
+
+    /* Premium section */
+    .premium-section {
+      padding: 24px;
+      text-align: center;
+    }
+
+    .premium-toggle {
+      display: inline-flex;
+      background: var(--racv-light-grey);
+      border-radius: 8px;
+      padding: 3px;
+      margin-bottom: 16px;
+    }
+
+    .premium-toggle button {
+      padding: 6px 18px;
+      border: none;
+      background: transparent;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--racv-dark-grey);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .premium-toggle button.active {
+      background: var(--racv-white);
+      color: var(--racv-navy);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    .premium-range {
+      font-size: 32px;
+      font-weight: 800;
+      color: var(--racv-navy);
+      letter-spacing: -0.02em;
+    }
+
+    .premium-range .per {
+      font-size: 16px;
+      font-weight: 500;
+      color: var(--racv-dark-grey);
+    }
+
+    .premium-note {
+      font-size: 12px;
+      color: var(--racv-dark-grey);
+      margin-top: 6px;
+    }
+
+    /* Excess options */
+    .section {
+      padding: 0 24px 20px;
+    }
+
+    .section-title {
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--racv-dark-grey);
+      margin-bottom: 10px;
+    }
+
+    .excess-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .excess-card {
+      border: 2px solid var(--racv-mid-grey);
+      border-radius: 8px;
+      padding: 12px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .excess-card:hover {
+      border-color: var(--racv-navy);
+    }
+
+    .excess-card.selected {
+      border-color: var(--racv-navy);
+      background: rgba(27, 58, 92, 0.04);
+    }
+
+    .excess-card .excess-amount {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--racv-navy);
+    }
+
+    .excess-card .excess-premium {
+      font-size: 13px;
+      color: var(--racv-dark-grey);
+      margin-top: 2px;
+    }
+
+    .excess-card .excess-label {
+      font-size: 11px;
+      color: var(--racv-dark-grey);
+      margin-top: 4px;
+    }
+
+    /* Coverage list */
+    .coverage-list {
+      list-style: none;
+    }
+
+    .coverage-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 6px 0;
+      font-size: 14px;
+    }
+
+    .coverage-list .check {
+      flex-shrink: 0;
+      width: 20px;
+      height: 20px;
+      background: var(--racv-green);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: 1px;
+    }
+
+    .coverage-list .check svg {
+      width: 12px;
+      height: 12px;
+    }
+
+    /* Member discount */
+    .member-banner {
+      margin: 0 24px 20px;
+      background: linear-gradient(135deg, #FFF5F5, #FEE2E2);
+      border: 1px solid #FECACA;
+      border-radius: 8px;
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .member-banner .badge {
+      flex-shrink: 0;
+      width: 36px;
+      height: 36px;
+      background: var(--racv-red);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .member-banner .badge svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    .member-banner .member-text {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--racv-text);
+    }
+
+    .member-banner .member-text span {
+      color: var(--racv-red);
+    }
+
+    /* CTA */
+    .cta-section {
+      padding: 0 24px 24px;
+    }
+
+    .cta-button {
+      display: block;
+      width: 100%;
+      padding: 14px 24px;
+      background: var(--racv-red);
+      color: var(--racv-white);
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      text-align: center;
+      text-decoration: none;
+      transition: background 0.2s;
+    }
+
+    .cta-button:hover {
+      background: #C81530;
+    }
+
+    .cta-button:focus-visible {
+      outline: 3px solid rgba(227, 25, 55, 0.4);
+      outline-offset: 2px;
+    }
+
+    /* Disclaimer */
+    .disclaimers {
+      padding: 16px 24px;
+      background: var(--racv-light-grey);
+      border-top: 1px solid var(--racv-mid-grey);
+    }
+
+    .disclaimers p {
+      font-size: 11px;
+      color: var(--racv-dark-grey);
+      line-height: 1.6;
+      margin-bottom: 4px;
+    }
+
+    .quote-id {
+      font-size: 11px;
+      color: var(--racv-dark-grey);
+      text-align: center;
+      padding: 10px 24px;
+    }
+
+    /* Responsive */
+    @media (max-width: 400px) {
+      .header { padding: 16px 18px; }
+      .section, .cta-section { padding-left: 18px; padding-right: 18px; }
+      .premium-range { font-size: 28px; }
+      .excess-grid { grid-template-columns: 1fr; }
+      .member-banner { margin-left: 18px; margin-right: 18px; }
+      .disclaimers { padding: 14px 18px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="widget" role="main" aria-label="RACV Insurance Quote Result">
+    <!-- Header -->
+    <div class="header">
+      <div class="logo" aria-hidden="true">
+        <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect width="48" height="48" rx="10" fill="#E31937"/>
+          <text x="50%" y="55%" text-anchor="middle" dominant-baseline="central"
+                fill="white" font-size="11" font-weight="800" font-family="Arial, sans-serif">RACV</text>
+        </svg>
+      </div>
+      <div class="header-text">
+        <h1>Comprehensive Car Insurance</h1>
+        <p>Indicative Quote</p>
+      </div>
+    </div>
+
+    <!-- Vehicle bar -->
+    <div class="vehicle-bar" id="vehicleBar">
+      <div><strong id="vehicleName">Loading...</strong></div>
+      <div class="vehicle-value">Est. value: <strong id="vehicleValue">—</strong></div>
+    </div>
+
+    <!-- Premium -->
+    <div class="premium-section">
+      <div class="premium-toggle" role="tablist" aria-label="Premium frequency">
+        <button role="tab" aria-selected="true" class="active" id="btnAnnual" onclick="showAnnual()">Annual</button>
+        <button role="tab" aria-selected="false" id="btnMonthly" onclick="showMonthly()">Monthly</button>
+      </div>
+      <div class="premium-range" aria-live="polite">
+        <span id="premiumDisplay">$—</span>
+        <span class="per" id="premiumPer">/year</span>
+      </div>
+      <p class="premium-note" id="premiumNote">With standard $650 excess</p>
+    </div>
+
+    <!-- Excess options -->
+    <div class="section">
+      <h2 class="section-title">Choose Your Excess</h2>
+      <div class="excess-grid" id="excessGrid" role="radiogroup" aria-label="Excess options">
+        <!-- Populated by JS -->
+      </div>
+    </div>
+
+    <!-- Coverage highlights -->
+    <div class="section">
+      <h2 class="section-title">What's Covered</h2>
+      <ul class="coverage-list" id="coverageList" aria-label="Coverage inclusions">
+        <!-- Populated by JS -->
+      </ul>
+    </div>
+
+    <!-- Member discount -->
+    <div class="member-banner" id="memberBanner" role="complementary" aria-label="Member discount">
+      <div class="badge" aria-hidden="true">
+        <svg viewBox="0 0 18 18" fill="none"><path d="M9 1l2.2 4.5 5 .7-3.6 3.5.9 5L9 12.5 4.5 14.7l.9-5L1.8 6.2l5-.7L9 1z" fill="white"/></svg>
+      </div>
+      <div class="member-text">
+        RACV members save <span id="discountPct">10%</span> on their premium
+      </div>
+    </div>
+
+    <!-- CTA -->
+    <div class="cta-section">
+      <a class="cta-button" id="ctaButton" href="#" target="_blank" rel="noopener noreferrer">
+        Get Your Full Quote
+      </a>
+    </div>
+
+    <!-- Disclaimers -->
+    <div class="disclaimers" id="disclaimers">
+      <!-- Populated by JS -->
+    </div>
+
+    <div class="quote-id" id="quoteId"></div>
+  </div>
+
+  <script>
+    let quoteData = null;
+    let showingAnnual = true;
+    let selectedExcessIndex = 0;
+
+    // Listen for data from MCP Apps UI bridge (postMessage)
+    window.addEventListener('message', (event) => {
+      try {
+        const msg = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+        if (msg?.data || msg?.type === 'quote_result') {
+          render(msg.data || msg);
+        }
+      } catch (e) {
+        // Ignore non-JSON messages
+      }
+    });
+
+    // Also check URL parameters for standalone testing
+    window.addEventListener('DOMContentLoaded', () => {
+      const params = new URLSearchParams(window.location.search);
+      const dataParam = params.get('data');
+      if (dataParam) {
+        try {
+          render(JSON.parse(decodeURIComponent(dataParam)));
+        } catch (e) {
+          console.error('Failed to parse data param:', e);
+        }
+      }
+
+      // Load demo data if no data source
+      if (!dataParam) {
+        loadDemoData();
+      }
+    });
+
+    function loadDemoData() {
+      render({
+        quote_id: 'RACV-DEMO1234',
+        premium_range_annual: { min: 1180, max: 1390 },
+        premium_range_monthly: { min: 103, max: 122 },
+        excess_options: [
+          { amount: 650, label: 'Standard ($650)', annual_premium: 1285, monthly_premium: 112 },
+          { amount: 800, label: '$800 excess', annual_premium: 1247, monthly_premium: 109 },
+          { amount: 1000, label: '$1,000 excess', annual_premium: 1195, monthly_premium: 105 },
+          { amount: 1500, label: '$1,500 excess', annual_premium: 1131, monthly_premium: 99 }
+        ],
+        coverage_summary: [
+          'Accident damage to your car',
+          'Fire and theft cover',
+          'Storm, flood and hail damage',
+          'Windscreen and window glass',
+          'Personal items in your car (up to $1,000)',
+          'Emergency accommodation & transport',
+          'New car replacement (if less than 2 years old)',
+          'Lifetime repair guarantee with RACV approved repairers',
+          '24/7 claims support'
+        ],
+        member_discount_available: true,
+        member_discount_pct: 10,
+        valid_until: '2026-03-18',
+        vehicle: { make: 'Mazda', model: 'CX-5', year: 2022, category: 'midrange', estimated_value: 33600 },
+        risk_zone: 'medium',
+        disclaimers: [
+          'This is an indicative quote only and is not a binding offer of insurance.',
+          'Final premium will be determined upon completion of a full application on racv.com.au.',
+          'RACV Comprehensive Car Insurance is issued by Insurance Manufacturers of Australia Pty Ltd (IMA) ABN 93 004 208 084, AFS Licence No. 227678.',
+          'Please refer to the Product Disclosure Statement (PDS) for full terms, conditions and exclusions at racv.com.au/pds.'
+        ]
+      });
+    }
+
+    function render(data) {
+      quoteData = data;
+
+      // Vehicle info
+      const v = data.vehicle;
+      document.getElementById('vehicleName').textContent = `${v.year} ${v.make} ${v.model}`;
+      document.getElementById('vehicleValue').textContent = `$${v.estimated_value.toLocaleString()}`;
+
+      // Premium
+      updatePremiumDisplay();
+
+      // Excess options
+      const grid = document.getElementById('excessGrid');
+      grid.innerHTML = '';
+      data.excess_options.forEach((opt, i) => {
+        const card = document.createElement('div');
+        card.className = 'excess-card' + (i === 0 ? ' selected' : '');
+        card.setAttribute('role', 'radio');
+        card.setAttribute('aria-checked', i === 0 ? 'true' : 'false');
+        card.setAttribute('tabindex', '0');
+        card.setAttribute('aria-label', `${opt.label}, $${showingAnnual ? opt.annual_premium : opt.monthly_premium} per ${showingAnnual ? 'year' : 'month'}`);
+        card.innerHTML = `
+          <div class="excess-amount">$${opt.amount.toLocaleString()}</div>
+          <div class="excess-premium">$${showingAnnual ? opt.annual_premium.toLocaleString() : opt.monthly_premium.toLocaleString()}/${showingAnnual ? 'yr' : 'mo'}</div>
+          <div class="excess-label">${i === 0 ? 'Standard' : 'Voluntary'}</div>
+        `;
+        card.onclick = () => selectExcess(i);
+        card.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectExcess(i); } };
+        grid.appendChild(card);
+      });
+
+      // Coverage
+      const list = document.getElementById('coverageList');
+      list.innerHTML = '';
+      data.coverage_summary.forEach((item) => {
+        const li = document.createElement('li');
+        li.innerHTML = `
+          <div class="check" aria-hidden="true">
+            <svg viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <span>${item}</span>
+        `;
+        list.appendChild(li);
+      });
+
+      // Member discount
+      if (data.member_discount_available) {
+        document.getElementById('discountPct').textContent = data.member_discount_pct + '%';
+        document.getElementById('memberBanner').style.display = 'flex';
+      } else {
+        document.getElementById('memberBanner').style.display = 'none';
+      }
+
+      // CTA button
+      const ctaUrl = `https://www.racv.com.au/car-insurance/get-a-quote.html?utm_source=ai_platform&utm_medium=mcp_app&utm_campaign=racv_insurance_app&ref=${data.quote_id}`;
+      document.getElementById('ctaButton').href = ctaUrl;
+
+      // Disclaimers
+      const discDiv = document.getElementById('disclaimers');
+      discDiv.innerHTML = '';
+      (data.disclaimers || []).forEach((d) => {
+        const p = document.createElement('p');
+        p.textContent = d;
+        discDiv.appendChild(p);
+      });
+
+      // Quote ID
+      document.getElementById('quoteId').textContent = `Quote ref: ${data.quote_id} | Valid until ${data.valid_until}`;
+    }
+
+    function updatePremiumDisplay() {
+      if (!quoteData) return;
+      const opt = quoteData.excess_options[selectedExcessIndex];
+      if (showingAnnual) {
+        document.getElementById('premiumDisplay').textContent =
+          `$${opt.annual_premium.toLocaleString()}`;
+        document.getElementById('premiumPer').textContent = '/year';
+      } else {
+        document.getElementById('premiumDisplay').textContent =
+          `$${opt.monthly_premium.toLocaleString()}`;
+        document.getElementById('premiumPer').textContent = '/month';
+      }
+      document.getElementById('premiumNote').textContent =
+        `With ${opt.label.toLowerCase()}`;
+    }
+
+    function selectExcess(index) {
+      selectedExcessIndex = index;
+      const cards = document.querySelectorAll('.excess-card');
+      cards.forEach((card, i) => {
+        card.classList.toggle('selected', i === index);
+        card.setAttribute('aria-checked', i === index ? 'true' : 'false');
+      });
+      updatePremiumDisplay();
+      // Update excess card premium labels
+      quoteData.excess_options.forEach((opt, i) => {
+        const card = cards[i];
+        if (card) {
+          const premEl = card.querySelector('.excess-premium');
+          if (premEl) {
+            premEl.textContent = `$${showingAnnual ? opt.annual_premium.toLocaleString() : opt.monthly_premium.toLocaleString()}/${showingAnnual ? 'yr' : 'mo'}`;
+          }
+        }
+      });
+    }
+
+    function showAnnual() {
+      showingAnnual = true;
+      document.getElementById('btnAnnual').classList.add('active');
+      document.getElementById('btnAnnual').setAttribute('aria-selected', 'true');
+      document.getElementById('btnMonthly').classList.remove('active');
+      document.getElementById('btnMonthly').setAttribute('aria-selected', 'false');
+      updatePremiumDisplay();
+      selectExcess(selectedExcessIndex);
+    }
+
+    function showMonthly() {
+      showingAnnual = false;
+      document.getElementById('btnMonthly').classList.add('active');
+      document.getElementById('btnMonthly').setAttribute('aria-selected', 'true');
+      document.getElementById('btnAnnual').classList.remove('active');
+      document.getElementById('btnAnnual').setAttribute('aria-selected', 'false');
+      updatePremiumDisplay();
+      selectExcess(selectedExcessIndex);
+    }
+  </script>
+</body>
+</html>

@@ -1,18 +1,31 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { calculateQuote } from "../utils/quote-calculator.js";
-
-const USE_LIVE_SCRAPER = process.env.RACV_LIVE_QUOTES === "true";
 
 export const getMotorQuoteSchema = {
-  vehicle_make: z.string().describe("Vehicle manufacturer (e.g. Toyota, Mazda, BMW)"),
-  vehicle_model: z.string().describe("Vehicle model (e.g. Corolla, CX-5, 3 Series)"),
-  vehicle_year: z.number().int().min(1990).max(2026).describe("Vehicle year of manufacture (1990-2026)"),
-  postcode: z
+  rego: z
     .string()
-    .regex(/^3\d{3}$/, "Must be a 4-digit Victorian postcode starting with 3")
-    .describe("Victorian postcode (4-digit, starting with 3)"),
-  driver_age: z.number().int().min(17).max(99).describe("Primary driver's age (17-99)"),
+    .min(1)
+    .max(10)
+    .describe("Vehicle registration number (Victorian number plate, e.g. 'ABC123')"),
+  address: z
+    .string()
+    .min(5)
+    .describe("Full street address in Victoria, e.g. '80 Bourke Street Melbourne'"),
+  driver_age: z
+    .number()
+    .int()
+    .min(17)
+    .max(99)
+    .describe("Primary driver's age (17-99)"),
+  driver_gender: z
+    .enum(["male", "female"])
+    .describe("Primary driver's gender"),
+  licence_age: z
+    .number()
+    .int()
+    .min(16)
+    .max(80)
+    .describe("Age when the driver first obtained their licence"),
   claims_last_5_years: z
     .number()
     .int()
@@ -20,104 +33,96 @@ export const getMotorQuoteSchema = {
     .max(5)
     .default(0)
     .describe("Number of at-fault claims in the last 5 years (0-5)"),
-  parking_type: z
-    .enum(["garage", "carport", "street", "driveway"])
-    .default("driveway")
-    .describe("Where the vehicle is parked overnight"),
+  is_racv_member: z
+    .boolean()
+    .default(false)
+    .describe("Whether the driver is an RACV member"),
 };
 
 export function registerGetMotorQuote(server: McpServer) {
   server.tool(
     "get_motor_quote",
-    "Get an indicative comprehensive motor insurance quote from RACV for a vehicle in Victoria. Returns estimated annual and monthly premiums, excess options, and coverage highlights. This is a non-binding indicative quote only.",
+    "Get a REAL comprehensive motor insurance quote from the RACV website for a Victorian-registered vehicle. Uses the vehicle's registration number (rego) to look up the car, then fills out the RACV quote form with the driver's details to get an actual premium. This scrapes the live RACV website and returns real pricing — not estimates.",
     getMotorQuoteSchema,
     async (params) => {
-      const quoteInput = {
-        vehicle_make: params.vehicle_make,
-        vehicle_model: params.vehicle_model,
-        vehicle_year: params.vehicle_year,
-        postcode: params.postcode,
-        driver_age: params.driver_age,
-        claims_last_5_years: params.claims_last_5_years,
-        parking_type: params.parking_type,
-      };
+      try {
+        console.log(`[Quote] Starting live RACV quote for rego: ${params.rego}`);
 
-      // Calculate mock quote as baseline
-      const quote = calculateQuote(quoteInput);
+        const { scrapeRacvQuote } = await import("../utils/racv-scraper.js");
 
-      // Attempt live RACV website scraping if enabled
-      let liveSource = false;
-      if (USE_LIVE_SCRAPER) {
-        try {
-          console.log("[Quote] Attempting live RACV website scrape...");
-          const { scrapeRacvQuote } = await import("../utils/racv-scraper.js");
-          const scraped = await scrapeRacvQuote(quoteInput);
-          if (scraped.success && scraped.annual_premium) {
-            // Override mock premiums with real data
-            const realAnnual = scraped.annual_premium;
-            const spread = 0.05; // tighter range with real data
-            quote.premium_range_annual = {
-              min: Math.round(realAnnual * (1 - spread)),
-              max: Math.round(realAnnual * (1 + spread)),
-            };
-            const realMonthly = scraped.monthly_premium || Math.round((realAnnual / 12) * 1.05);
-            quote.premium_range_monthly = {
-              min: Math.round(realMonthly * (1 - spread)),
-              max: Math.round(realMonthly * (1 + spread)),
-            };
-            // Recalculate excess options based on real premium
-            quote.excess_options = quote.excess_options.map((opt, i) => {
-              const discounts = [0, 0.03, 0.07, 0.12];
-              const discounted = Math.round(realAnnual * (1 - discounts[i]));
-              return {
-                ...opt,
-                annual_premium: discounted,
-                monthly_premium: Math.round((discounted / 12) * 1.05),
-              };
-            });
-            liveSource = true;
-            console.log(`[Quote] Live quote: $${realAnnual}/year`);
-          } else {
-            console.log("[Quote] Live scrape did not return premium, using mock data.");
+        const result = await scrapeRacvQuote({
+          rego: params.rego,
+          address: params.address,
+          driver_age: params.driver_age,
+          driver_gender: params.driver_gender,
+          licence_age: params.licence_age,
+          claims_last_5_years: params.claims_last_5_years,
+          is_racv_member: params.is_racv_member,
+        });
+
+        if (result.success) {
+          const lines = [
+            `RACV Comprehensive Motor Insurance Quote`,
+            ``,
+            `Vehicle: ${result.vehicle_description}`,
+            ``,
+          ];
+
+          if (result.annual_premium) {
+            lines.push(`Annual Premium: $${result.annual_premium.toLocaleString()}`);
           }
-        } catch (err) {
-          console.error("[Quote] Live scrape failed, using mock data:", err);
+          if (result.monthly_premium) {
+            lines.push(`Monthly Premium: $${result.monthly_premium.toLocaleString()}/month`);
+          }
+          if (result.excess_amount) {
+            lines.push(`Standard Excess: $${result.excess_amount.toLocaleString()}`);
+          }
+
+          lines.push(
+            ``,
+            `Source: Live quote from RACV website (my.racv.com.au)`,
+            `Note: This is a real indicative quote. Final pricing may vary when completing the full application on the RACV website.`,
+          );
+
+          if (result.raw_amounts && result.raw_amounts.length > 0) {
+            lines.push(``, `All amounts found on quote page: ${result.raw_amounts.join(", ")}`);
+          }
+
+          return {
+            content: [{ type: "text", text: lines.join("\n") }],
+          };
+        } else {
+          // Quote failed - return error with context
+          const errorLines = [
+            `RACV Quote - Unable to Complete`,
+            ``,
+            `Vehicle: ${result.vehicle_description || "Not found"}`,
+            `Step reached: ${result.step_reached || "unknown"}`,
+            `Error: ${result.error}`,
+          ];
+
+          if (result.raw_amounts && result.raw_amounts.length > 0) {
+            errorLines.push(``, `Amounts found on page: ${result.raw_amounts.join(", ")}`);
+          }
+
+          if (result.screenshot_path) {
+            errorLines.push(``, `Screenshot saved to: ${result.screenshot_path}`);
+          }
+
+          return {
+            content: [{ type: "text", text: errorLines.join("\n") }],
+          };
         }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Failed to get RACV quote: ${error instanceof Error ? error.message : String(error)}\n\nThis tool requires Playwright and a browser to be available on the server. Make sure the server is running locally with Playwright installed.`,
+            },
+          ],
+        };
       }
-
-      const sourceNote = liveSource
-        ? "(Based on RACV website pricing)"
-        : "(Indicative estimate)";
-
-      const textSummary = [
-        `RACV Comprehensive Motor Insurance — Indicative Quote`,
-        `Quote ID: ${quote.quote_id}`,
-        ``,
-        `Vehicle: ${quote.vehicle.year} ${quote.vehicle.make} ${quote.vehicle.model}`,
-        `Estimated Market Value: $${quote.vehicle.estimated_value.toLocaleString()}`,
-        ``,
-        `Estimated Annual Premium: $${quote.premium_range_annual.min} – $${quote.premium_range_annual.max}`,
-        `Estimated Monthly Premium: $${quote.premium_range_monthly.min} – $${quote.premium_range_monthly.max}/month`,
-        ``,
-        `Excess Options:`,
-        ...quote.excess_options.map(
-          (opt) =>
-            `  • ${opt.label}: $${opt.annual_premium}/year ($${opt.monthly_premium}/month)`
-        ),
-        ``,
-        `Coverage Includes:`,
-        ...quote.coverage_summary.map((item) => `  ✓ ${item}`),
-        ``,
-        `RACV Member Discount: ${quote.member_discount_pct}% discount available for RACV members`,
-        ``,
-        `Quote valid until: ${quote.valid_until}`,
-        ``,
-        ...quote.disclaimers.map((d) => `⚠ ${d}`),
-      ].join("\n");
-
-      return {
-        content: [{ type: "text", text: textSummary }],
-      };
     }
   );
 }

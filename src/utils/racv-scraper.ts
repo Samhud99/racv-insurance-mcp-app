@@ -1,24 +1,36 @@
-import { chromium, Browser, Page } from "playwright";
+import { chromium, Browser, Page, BrowserContext } from "playwright";
 
-export interface RacvScraperInput {
-  vehicle_make: string;
-  vehicle_model: string;
-  vehicle_year: number;
-  postcode: string;
+export interface RacvQuoteInput {
+  rego: string;
+  address: string;         // Full street address e.g. "80 Bourke Street, Melbourne VIC 3000"
   driver_age: number;
+  driver_gender: "male" | "female";
+  licence_age: number;     // Age when licence was obtained
   claims_last_5_years: number;
-  parking_type: "garage" | "carport" | "street" | "driveway";
+  is_racv_member?: boolean;
+  under_finance?: boolean;
+  purpose?: "Private" | "Business use & not registered for GST" | "Business use & registered for GST";
 }
 
-export interface RacvScraperResult {
+export interface RacvQuoteResult {
   success: boolean;
-  source: "racv_website" | "mock";
+  vehicle_description?: string;
   annual_premium?: number;
   monthly_premium?: number;
-  excess_standard?: number;
+  excess_amount?: number;
+  raw_amounts?: string[];
   screenshot_path?: string;
   error?: string;
-  raw_text?: string;
+  step_reached?: string;
+}
+
+interface VehicleInfo {
+  year: string;
+  make: string;
+  model: string;
+  bodyType: string;
+  variant: string;
+  description: string;
 }
 
 const RACV_URL = "https://my.racv.com.au/s/motor-insurance?p=CAR";
@@ -28,8 +40,8 @@ let browser: Browser | null = null;
 async function getBrowser(): Promise<Browser> {
   if (!browser || !browser.isConnected()) {
     browser = await chromium.launch({
-      headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+      headless: false,
+      slowMo: 100,
     });
   }
   return browser;
@@ -43,361 +55,567 @@ export async function closeBrowser(): Promise<void> {
 }
 
 /**
- * Select an option from a native <select> by matching the label text.
- * Returns true if a match was found.
+ * Type into a Salesforce LWC input field using keyboard events.
+ * Playwright's fill() bypasses LWC data binding, so we must use real keyboard input.
  */
-async function selectByLabel(
-  page: Page,
-  selectLocator: ReturnType<Page["locator"]>,
-  searchText: string
-): Promise<boolean> {
-  // Get all options and find the best match
-  const options = await selectLocator.locator("option").all();
-  for (const opt of options) {
-    const text = await opt.textContent();
-    if (
-      text &&
-      text.trim().toLowerCase().includes(searchText.toLowerCase())
-    ) {
-      const value = await opt.getAttribute("value");
-      if (value) {
-        await selectLocator.selectOption(value);
-        return true;
-      }
-    }
-  }
-  return false;
+async function lwcType(page: Page, selector: string, value: string): Promise<void> {
+  const field = page.locator(selector);
+  await field.click({ force: true });
+  await page.waitForTimeout(200);
+  await page.keyboard.press("Meta+a");
+  await page.keyboard.press("Backspace");
+  await page.waitForTimeout(100);
+  await page.keyboard.type(value, { delay: 50 });
+  await page.waitForTimeout(200);
+  await page.keyboard.press("Tab");
+  await page.waitForTimeout(300);
 }
 
 /**
- * Attempts to get a real insurance quote from the RACV website using Playwright.
- * Automates the multi-step quoting form at my.racv.com.au.
- *
- * Form flow:
- * 1. YOUR CAR: Year → Make → Model → Body Type (cascading <select> dropdowns)
- * 2. ABOUT YOU: Postcode, DOB, parking, licence, claims
- * 3. CUSTOMISE COVER: Excess selection → premium result
+ * Click a Salesforce LWC radio button with proper event dispatching.
  */
-export async function scrapeRacvQuote(
-  input: RacvScraperInput
-): Promise<RacvScraperResult> {
+async function lwcRadioClick(page: Page, selector: string): Promise<void> {
+  const el = page.locator(selector);
+  if (await el.isVisible({ timeout: 2000 }).catch(() => false)) {
+    await el.click({ force: true });
+    await page.waitForTimeout(300);
+    await el.dispatchEvent("change");
+    await page.waitForTimeout(200);
+  }
+}
+
+/**
+ * Extract vehicle info from RACV Aura API response.
+ * RACV makes two calls: rego lookup (usually succeeds) and HUON info (often fails).
+ * We capture data from the successful rego lookup even when HUON fails.
+ */
+function extractVehicleFromAuraResponse(responseBody: string): VehicleInfo | null {
+  try {
+    const data = JSON.parse(responseBody);
+    const action = data?.actions?.[0];
+    if (action?.state !== "SUCCESS") return null;
+
+    const returnStr = action?.returnValue?.returnValue?.returnValue;
+    if (!returnStr || typeof returnStr !== "string") return null;
+
+    const parsed = JSON.parse(returnStr);
+    const vehicle = parsed?.vehicles?.[0]?.vehicle;
+    if (!vehicle) return null;
+
+    return {
+      year: vehicle.yearCreate || "",
+      make: vehicle.makeName || vehicle.make || "",
+      model: vehicle.familyName || vehicle.model || "",
+      bodyType: vehicle.bodyStyleName || vehicle.bodyStyle || "",
+      variant: vehicle.variantName || "",
+      description: `${vehicle.yearCreate || ""} ${(vehicle.makeName || "").toUpperCase()} ${vehicle.familyName || ""} ${vehicle.variantName || ""}`.trim(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function scrapeRacvQuote(input: RacvQuoteInput): Promise<RacvQuoteResult> {
   let page: Page | null = null;
+  let context: BrowserContext | null = null;
 
   try {
     const b = await getBrowser();
-    page = await b.newPage({
-      viewport: { width: 1280, height: 900 },
-      userAgent:
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    });
+    context = await b.newContext({ viewport: { width: 1280, height: 900 } });
+    page = await context.newPage();
 
-    // Block only ad/tracking domains (not analytics needed by Salesforce)
     await page.route(
-      /\.(doubleclick\.net|googleads\.g\.doubleclick|adsrvr\.org|facebook\.net)\//,
+      /\.(doubleclick\.net|googleads|adsrvr\.org|facebook\.net)\//,
       (route) => route.abort()
     );
 
-    console.log("[RACV Scraper] Navigating to quote page...");
-    await page.goto(RACV_URL, {
-      waitUntil: "domcontentloaded",
-      timeout: 20000,
+    // Capture vehicle data from Aura API responses
+    // Using object wrapper so TS can track mutations from async callbacks
+    const captured: { vehicle: VehicleInfo | null } = { vehicle: null };
+    page.on("response", async (res) => {
+      try {
+        if (res.url().includes("/aura?") && res.url().includes("ApexAction.execute")) {
+          const body = await res.text();
+          if (body.includes("vehicles") || body.includes("yearCreate")) {
+            const vehicle = extractVehicleFromAuraResponse(body);
+            if (vehicle && vehicle.year && vehicle.make) {
+              captured.vehicle = vehicle;
+              console.log(`[RACV] API captured vehicle: ${vehicle.description}`);
+            }
+          }
+        }
+      } catch {
+        // Response body may not be available
+      }
     });
 
-    // Wait for Salesforce Aura/LWC to render
-    await page.waitForTimeout(8000);
+    // ── STEP 1: Navigate & rego lookup ──
+    console.log("[RACV] Navigating to quote page...");
+    await page.goto(RACV_URL, { waitUntil: "domcontentloaded", timeout: 30000 });
+    await page.waitForTimeout(10000);
 
-    // ── Step 1: Click "Find your car manually" ──
-    console.log("[RACV Scraper] Clicking 'Find your car manually'...");
-    const manualLink = page.getByText("Find your car manually");
-    await manualLink.waitFor({ timeout: 10000 });
-    await manualLink.click();
+    let vehicleDesc = "";
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      console.log(`[RACV] Entering rego (attempt ${attempt})...`);
+
+      if (attempt > 1) {
+        // Check if "Search by Registration instead" link exists
+        const regoLink = page.locator("a, button").filter({ hasText: /search by registration/i });
+        if (await regoLink.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await regoLink.click();
+          await page.waitForTimeout(3000);
+        } else {
+          await page.goto(RACV_URL, { waitUntil: "domcontentloaded", timeout: 30000 });
+          await page.waitForTimeout(10000);
+        }
+      }
+
+      // Type rego using keyboard events (fill() bypasses LWC data binding)
+      const regoField = page.locator("input[name='rego']");
+      await regoField.waitFor({ timeout: 10000 });
+      await regoField.click({ force: true });
+      await page.waitForTimeout(300);
+      await page.keyboard.press("Meta+a");
+      await page.keyboard.press("Backspace");
+      await page.keyboard.type(input.rego, { delay: 80 });
+      await page.waitForTimeout(500);
+
+      // Click Find Your car and capture API response
+      const findBtn = page.locator("button").filter({ hasText: /Find/i });
+      await findBtn.scrollIntoViewIfNeeded();
+
+      // Set up response capture BEFORE clicking
+      const responsePromise = page.waitForResponse(
+        (res) => res.url().includes("/aura?") && res.url().includes("ApexAction.execute"),
+        { timeout: 20000 }
+      ).then(async (res) => {
+        try {
+          const body = await res.text();
+          const vehicle = extractVehicleFromAuraResponse(body);
+          if (vehicle && vehicle.year && vehicle.make) {
+            captured.vehicle = vehicle;
+            console.log(`[RACV] API captured vehicle: ${vehicle.description}`);
+          }
+        } catch {}
+      }).catch(() => {});
+
+      await findBtn.click();
+      console.log("[RACV] Clicked Find Your car, waiting...");
+
+      // Wait for at least one API response
+      await responsePromise;
+
+      // Wait for result
+      let found = false;
+      let notFoundMsg = false;
+      for (let wait = 0; wait < 25; wait++) {
+        await page.waitForTimeout(1000);
+
+        // Check if address field appeared (auto rego lookup succeeded)
+        const addressField = page.locator("input[name='addressSearch']");
+        if (await addressField.isVisible().catch(() => false)) {
+          const bodyText = await page.textContent("body") || "";
+          const carMatch = bodyText.match(/(\d{4}\s+[A-Z][A-Z0-9\s]+(?:\([^)]+\))?)/);
+          vehicleDesc = carMatch ? carMatch[1].trim() : (captured.vehicle ? captured.vehicle.description : "Vehicle found");
+          found = true;
+          break;
+        }
+
+        // Check for car heading
+        const headings = await page.locator("h1, h2, h3, h4, h5").allTextContents();
+        for (const h of headings) {
+          if (/\d{4}\s+[A-Z]{2,}/.test(h.trim())) {
+            vehicleDesc = h.trim();
+            found = true;
+            break;
+          }
+        }
+        if (found) break;
+
+        // Check for "couldn't find" via body text (more reliable than locator)
+        const bodyText = await page.textContent("body") || "";
+        if (/couldn.t find a vehicle|could not find a vehicle/i.test(bodyText)) {
+          console.log("[RACV] RACV couldn't find vehicle message detected");
+          notFoundMsg = true;
+          break;
+        }
+      }
+
+      if (found) {
+        console.log(`[RACV] Found: ${vehicleDesc}`);
+        break;
+      }
+
+      // Wait a moment for async response handler to complete
+      await page.waitForTimeout(2000);
+      console.log(`[RACV] Captured vehicle data: ${captured.vehicle ? captured.vehicle.description : "none"}`);
+
+      // HUON failure fallback: use manual search with captured vehicle data
+      const cv = captured.vehicle; // local for TS narrowing
+      if (notFoundMsg && cv) {
+        console.log(`[RACV] HUON failed but API has vehicle data. Using manual search...`);
+        console.log(`[RACV] Vehicle from API: ${cv.description}`);
+
+        // Fill Year (should already be pre-filled from partial rego match)
+        const yearSelect = page.locator("select").filter({ hasText: /2011|2012|2010/ }).first();
+        const yearSelectByName = page.locator("select[name*='year' i], select[name*='Year']");
+        const yearEl = await yearSelectByName.count() > 0 ? yearSelectByName.first() : yearSelect;
+        if (await yearEl.isVisible({ timeout: 2000 }).catch(() => false)) {
+          // Try to select the year
+          try {
+            await yearEl.selectOption(cv.year);
+            await page.waitForTimeout(1500);
+          } catch {
+            // Year might already be selected
+          }
+        }
+
+        // Fill Make
+        const makeSelects = page.locator("select:visible");
+        const makeCount = await makeSelects.count();
+        for (let i = 0; i < makeCount; i++) {
+          const sel = makeSelects.nth(i);
+          const options = await sel.locator("option").allTextContents();
+          const makeOption = options.find(o =>
+            o.toUpperCase().includes(cv.make.toUpperCase()) ||
+            cv.make.toUpperCase().includes(o.toUpperCase().trim())
+          );
+          if (makeOption && makeOption.trim()) {
+            console.log(`[RACV] Selecting make: ${makeOption.trim()}`);
+            await sel.selectOption({ label: makeOption.trim() });
+            await page.waitForTimeout(2000);
+            break;
+          }
+        }
+
+        // Fill Model (dropdown reloads after Make selection)
+        await page.waitForTimeout(1000);
+        const modelSelects = page.locator("select:visible");
+        const modelCount = await modelSelects.count();
+        for (let i = 0; i < modelCount; i++) {
+          const sel = modelSelects.nth(i);
+          const options = await sel.locator("option").allTextContents();
+          const modelOption = options.find(o =>
+            o.toUpperCase().includes(cv.model.toUpperCase()) ||
+            cv.model.toUpperCase().includes(o.toUpperCase().trim())
+          );
+          if (modelOption && modelOption.trim()) {
+            console.log(`[RACV] Selecting model: ${modelOption.trim()}`);
+            await sel.selectOption({ label: modelOption.trim() });
+            await page.waitForTimeout(2000);
+            break;
+          }
+        }
+
+        // Fill Body Type
+        await page.waitForTimeout(1000);
+        const bodySelects = page.locator("select:visible");
+        const bodyCount = await bodySelects.count();
+        for (let i = 0; i < bodyCount; i++) {
+          const sel = bodySelects.nth(i);
+          const options = await sel.locator("option").allTextContents();
+          // Look for body type match (STATION WAGON, SEDAN, HATCHBACK, SUV etc.)
+          const bodyOption = options.find(o => {
+            const upper = o.toUpperCase().trim();
+            return upper.includes(cv.bodyType.toUpperCase()) ||
+                   cv.bodyType.toUpperCase().includes(upper);
+          });
+          if (bodyOption && bodyOption.trim()) {
+            console.log(`[RACV] Selecting body type: ${bodyOption.trim()}`);
+            await sel.selectOption({ label: bodyOption.trim() });
+            await page.waitForTimeout(2000);
+            break;
+          }
+        }
+
+        await page.screenshot({ path: "/tmp/racv-manual-search.png", fullPage: true });
+
+        // Click Search/Find button after manual fill
+        const searchBtn = page.locator("button:visible").filter({ hasText: /search|find/i });
+        if (await searchBtn.first().isVisible({ timeout: 3000 }).catch(() => false)) {
+          await searchBtn.first().click();
+          console.log("[RACV] Clicked manual search, waiting...");
+          await page.waitForTimeout(10000);
+        }
+
+        // Check if we now have the car details / address field
+        const addressField = page.locator("input[name='addressSearch']");
+        if (await addressField.isVisible({ timeout: 10000 }).catch(() => false)) {
+          vehicleDesc = cv.description;
+          console.log(`[RACV] Manual search succeeded: ${vehicleDesc}`);
+          break;
+        }
+
+        // Check for variant selection (multiple matching vehicles)
+        const variantHeadings = await page.locator("h2, h3, h4").allTextContents();
+        for (const h of variantHeadings) {
+          if (/\d{4}\s+[A-Z]{2,}/.test(h.trim())) {
+            vehicleDesc = h.trim();
+            console.log(`[RACV] Variant selection page: ${vehicleDesc}`);
+            break;
+          }
+        }
+        if (vehicleDesc) break;
+
+        await page.screenshot({ path: `/tmp/racv-manual-${attempt}.png`, fullPage: true });
+      }
+
+      console.log(`[RACV] Attempt ${attempt} failed`);
+    }
+
+    if (!vehicleDesc) {
+      await page.screenshot({ path: "/tmp/racv-not-found.png", fullPage: true });
+      return {
+        success: false,
+        error: `Could not find a vehicle with registration ${input.rego} after multiple attempts. RACV's lookup service may be temporarily unavailable.`,
+        step_reached: "rego_lookup",
+        screenshot_path: "/tmp/racv-not-found.png",
+      };
+    }
+
+    // ── STEP 2: YOUR CAR details ──
+    console.log("[RACV] Filling car details...");
+
+    // Address
+    const addrInput = page.locator("input[name='addressSearch']");
+    await addrInput.click({ force: true });
+    await page.waitForTimeout(200);
+    await page.keyboard.press("Meta+a");
+    await page.keyboard.press("Backspace");
+    await page.keyboard.type(input.address, { delay: 60 });
     await page.waitForTimeout(3000);
 
-    // ── Step 2: Fill vehicle details (cascading selects) ──
-    // Order: Year → Make → Model → Body Type
-    console.log("[RACV Scraper] Selecting year...");
+    // Select first autocomplete suggestion
+    const suggestion = page.locator("[role='option'], [role='listbox'] li, .slds-listbox__option, ul li")
+      .filter({ hasText: new RegExp(input.address.split(" ")[0], "i") });
+    if (await suggestion.first().isVisible({ timeout: 3000 }).catch(() => false)) {
+      await suggestion.first().click();
+      await page.waitForTimeout(1000);
+    }
 
-    // Year select
-    const yearSelect = page.locator("select[name='year']");
-    if (await yearSelect.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await yearSelect.selectOption(String(input.vehicle_year));
-      await page.waitForTimeout(2000); // Wait for make options to load
+    // Finance: No
+    await lwcRadioClick(page, "input[name='UnderFinance'][value='No']");
+
+    // Purpose: Private
+    const purposeSelect = page.locator("select[name='Purpose']");
+    if (await purposeSelect.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await purposeSelect.selectOption(input.purpose || "Private");
+      await page.waitForTimeout(300);
+    }
+
+    // Business name: No
+    await lwcRadioClick(page, "input[name='vehicleRegisterInBusinessName'][value='No']");
+
+    // Click Continue
+    console.log("[RACV] Proceeding to About You...");
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await page.waitForTimeout(1000);
+    const continueBtn1 = page.locator("button").filter({ hasText: /Continue/i });
+    await continueBtn1.scrollIntoViewIfNeeded();
+    await continueBtn1.click({ timeout: 10000 });
+    await page.waitForTimeout(6000);
+
+    // Check for address error
+    const errTexts = await page.locator("[class*='error']:visible").allTextContents();
+    if (errTexts.some(e => /address/i.test(e))) {
+      return {
+        success: false,
+        vehicle_description: vehicleDesc,
+        error: "Could not validate the address. Please provide a valid Victorian street address.",
+        step_reached: "your_car",
+      };
+    }
+
+    await page.screenshot({ path: "/tmp/racv-step2-done.png", fullPage: true });
+
+    // ── STEP 3: ABOUT YOU ──
+    console.log("[RACV] Filling About You...");
+
+    // RACV Member
+    if (input.is_racv_member) {
+      await lwcRadioClick(page, "input[name='isMember0'][value='Yes']");
     } else {
-      // Try aria-label fallback
-      const yearAlt = page.getByLabel(/year/i).first();
-      await yearAlt.selectOption(String(input.vehicle_year));
-      await page.waitForTimeout(2000);
+      await lwcRadioClick(page, "input[name='isMember0'][value='No']");
     }
 
-    console.log("[RACV Scraper] Selecting make...");
-    // Make select (populated after year is selected)
-    const makeSelect = page.locator("select[name='make']");
-    if (await makeSelect.isVisible({ timeout: 5000 }).catch(() => false)) {
-      const found = await selectByLabel(page, makeSelect, input.vehicle_make);
-      if (!found) {
-        console.log(`[RACV Scraper] Make "${input.vehicle_make}" not found in dropdown`);
-        await page.screenshot({ path: "/tmp/racv-make-options.png", fullPage: true });
-        // Log available options for debugging
-        const opts = await makeSelect.locator("option").allTextContents();
-        console.log("[RACV Scraper] Available makes:", opts.slice(0, 20).join(", "));
-      }
-      await page.waitForTimeout(2000); // Wait for model options to load
+    // Gender
+    const genderValue = input.driver_gender === "male" ? "Male" : "Female";
+    await lwcRadioClick(page, `input[name='driverSex0'][value='${genderValue}']`);
+
+    // Age
+    const ageInput = page.locator("input[name='age0']");
+    if (await ageInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await lwcType(page, "input[name='age0']", String(input.driver_age));
     }
 
-    console.log("[RACV Scraper] Selecting model...");
-    // Model select (populated after make is selected)
-    const modelSelect = page.locator("select[name='model']");
-    if (await modelSelect.isVisible({ timeout: 5000 }).catch(() => false)) {
-      const found = await selectByLabel(page, modelSelect, input.vehicle_model);
-      if (!found) {
-        console.log(`[RACV Scraper] Model "${input.vehicle_model}" not found in dropdown`);
-        const opts = await modelSelect.locator("option").allTextContents();
-        console.log("[RACV Scraper] Available models:", opts.slice(0, 20).join(", "));
-      }
-      await page.waitForTimeout(2000); // Wait for body type options to load
-    }
-
-    console.log("[RACV Scraper] Selecting body type...");
-    // Body Type select (populated after model is selected)
-    const bodySelect = page.locator("select[name='bodyType']").or(
-      page.locator("select").filter({ hasText: /body type/i })
-    );
-    if (await bodySelect.isVisible({ timeout: 5000 }).catch(() => false)) {
-      // Select the first non-placeholder option
-      const opts = await bodySelect.locator("option").all();
-      for (const opt of opts) {
-        const val = await opt.getAttribute("value");
-        const text = await opt.textContent();
-        if (val && val.trim() && text && !text.trim().toLowerCase().includes("body type")) {
-          await bodySelect.selectOption(val);
-          break;
-        }
-      }
-      await page.waitForTimeout(1500);
-    }
-
-    await page.screenshot({ path: "/tmp/racv-step2-filled.png", fullPage: true });
-    console.log("[RACV Scraper] Vehicle details selected.");
-
-    // Wait for car variant list to appear (specific engine/transmission options)
-    console.log("[RACV Scraper] Waiting for car variant list...");
-    await page.waitForTimeout(4000);
-
-    // The RACV form shows a list of specific car variants after body type selection.
-    // Each variant is a clickable row. Select the first one.
-    const variantRows = page.locator("table tr, [role='row'], [role='option'], .car-details-row, [data-row-key-value]").or(
-      page.locator("div").filter({ hasText: /FUEL INJECTION|HYBRID|TURBO|PETROL|DIESEL/i })
-    );
-    const variantCount = await variantRows.count();
-    if (variantCount > 0) {
-      console.log(`[RACV Scraper] Found ${variantCount} car variants. Selecting first one...`);
-      // Click the first variant that looks like a car description
-      for (let i = 0; i < Math.min(variantCount, 10); i++) {
-        const row = variantRows.nth(i);
-        const text = await row.textContent().catch(() => "");
-        if (text && (text.includes("FUEL") || text.includes("HYBRID") || text.includes("TURBO") || text.includes("PETROL") || text.includes("DIESEL") || text.includes("CC"))) {
-          console.log(`[RACV Scraper] Clicking variant: ${text.trim().slice(0, 80)}...`);
-          await row.click();
-          await page.waitForTimeout(5000);
-          break;
-        }
-      }
-    } else {
-      // Try finding clickable radio buttons or list items
-      const radioItems = page.locator("input[type='radio']");
-      if (await radioItems.count() > 0) {
-        await radioItems.first().click();
-        await page.waitForTimeout(3000);
-      }
-    }
-
-    await page.screenshot({ path: "/tmp/racv-step2b-variant.png", fullPage: true });
-
-    // Look for Next/Continue button
-    const nextBtn = page.getByRole("button", { name: /next|continue/i });
-    if (await nextBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await nextBtn.click();
-      await page.waitForTimeout(4000);
-    }
-
-    await page.screenshot({ path: "/tmp/racv-step3.png", fullPage: true });
-
-    // ── Step 3: Fill "About You" section ──
-    console.log("[RACV Scraper] Filling 'About You' section...");
-
-    // Calculate DOB from age (use 1 January for simplicity)
-    const currentYear = new Date().getFullYear();
-    const birthYear = currentYear - input.driver_age;
-
-    // Postcode
-    const postcodeInput = page.locator("input[name*='postcode' i]").or(
-      page.getByPlaceholder(/postcode/i)
-    ).or(page.getByLabel(/postcode/i));
-    if (await postcodeInput.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await postcodeInput.fill(input.postcode);
-      await page.waitForTimeout(1500);
-      // May need to select from autocomplete
-      const suggestion = page.getByRole("option").first();
-      if (await suggestion.isVisible({ timeout: 2000 }).catch(() => false)) {
-        await suggestion.click();
-      }
-      await page.waitForTimeout(500);
-    }
-
-    // Date of birth — may be separate day/month/year fields or a single input
-    const dobInput = page.locator("input[name*='dob' i]").or(
-      page.locator("input[name*='dateOfBirth' i]")
-    ).or(page.getByPlaceholder(/date of birth|dd\/mm\/yyyy/i));
-    if (await dobInput.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await dobInput.fill(`01/01/${birthYear}`);
-      await page.waitForTimeout(500);
-    } else {
-      // Try separate fields
-      const dayInput = page.locator("input[name*='day' i]").or(page.getByPlaceholder(/dd/i));
-      const monthInput = page.locator("input[name*='month' i]").or(page.getByPlaceholder(/mm/i));
-      const yearDobInput = page.locator("input[name*='year' i]").last().or(page.getByPlaceholder(/yyyy/i));
-      if (await dayInput.isVisible({ timeout: 2000 }).catch(() => false)) {
-        await dayInput.fill("01");
-        await monthInput.fill("01");
-        await yearDobInput.fill(String(birthYear));
-        await page.waitForTimeout(500);
-      }
-    }
-
-    // Parking type — may be radio buttons or a select
-    const parkingMap: Record<string, string[]> = {
-      garage: ["garage", "locked garage"],
-      carport: ["carport"],
-      driveway: ["driveway", "own property"],
-      street: ["street", "on street", "kerbside"],
-    };
-    const parkingTerms = parkingMap[input.parking_type] || [input.parking_type];
-
-    const parkingSelect = page.locator("select[name*='parking' i]").or(
-      page.getByLabel(/park/i)
-    );
-    if (await parkingSelect.isVisible({ timeout: 2000 }).catch(() => false)) {
-      for (const term of parkingTerms) {
-        if (await selectByLabel(page, parkingSelect, term)) break;
-      }
+    // Licence age
+    const licenceInput = page.locator("input[name='driverAge0']");
+    if (await licenceInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await lwcType(page, "input[name='driverAge0']", String(input.licence_age));
     }
 
     // Claims
-    const claimsSelect = page.locator("select[name*='claim' i]").or(
-      page.getByLabel(/claim/i)
-    );
-    if (await claimsSelect.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await selectByLabel(page, claimsSelect, String(input.claims_last_5_years));
+    if (input.claims_last_5_years === 0) {
+      await lwcRadioClick(page, "input[name='hasClaims0'][value='No']");
+    } else {
+      await lwcRadioClick(page, "input[name='hasClaims0'][value='Yes']");
+      await page.waitForTimeout(500);
+      const claimsCountSelect = page.locator("select[name*='claim' i]");
+      if (await claimsCountSelect.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await claimsCountSelect.selectOption(String(input.claims_last_5_years));
+        await page.waitForTimeout(300);
+      }
     }
 
     await page.screenshot({ path: "/tmp/racv-step3-filled.png", fullPage: true });
 
-    // Click next/continue to get quote
-    const nextBtn2 = page.getByRole("button", {
-      name: /next|continue|get.*(quote|estimate)|calculate/i,
-    });
-    if (await nextBtn2.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await nextBtn2.click();
-      await page.waitForTimeout(6000);
+    // Click Continue to get quote
+    console.log("[RACV] Getting quote...");
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await page.waitForTimeout(1000);
+    const continueBtn2 = page.locator("button").filter({ hasText: /Continue/i });
+    await continueBtn2.scrollIntoViewIfNeeded();
+    await continueBtn2.click({ timeout: 10000 });
+
+    // Wait for the quote to load (with system error retry)
+    console.log("[RACV] Waiting for quote calculation...");
+    let quoteLoaded = false;
+    for (let quoteAttempt = 0; quoteAttempt < 2; quoteAttempt++) {
+      try {
+        await page.locator("text=/\\$\\d/").first().waitFor({ timeout: 60000 });
+        quoteLoaded = true;
+        console.log("[RACV] Quote loaded!");
+        break;
+      } catch {
+        console.log("[RACV] Timeout waiting for quote, checking page state...");
+      }
+      await page.waitForTimeout(2000);
+
+      // Check for system error
+      const bodyCheck = await page.textContent("body") || "";
+      if (/system error|technical problem/i.test(bodyCheck)) {
+        console.log("[RACV] System error detected, clicking BACK TO FORM...");
+        const backBtn = page.locator("button, a").filter({ hasText: /back to form/i });
+        if (await backBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+          await backBtn.click();
+          await page.waitForTimeout(5000);
+          // Re-submit the form
+          const retryBtn = page.locator("button").filter({ hasText: /Continue/i });
+          if (await retryBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+            await retryBtn.scrollIntoViewIfNeeded();
+            await retryBtn.click();
+            console.log("[RACV] Re-submitted form, waiting again...");
+            continue;
+          }
+        }
+      }
     }
+    await page.waitForTimeout(3000);
 
-    await page.screenshot({ path: "/tmp/racv-step4.png", fullPage: true });
+    await page.screenshot({ path: "/tmp/racv-quote-result.png", fullPage: true });
 
-    // ── Step 4: Extract premium ──
-    console.log("[RACV Scraper] Extracting premium...");
+    // ── STEP 4: Extract quote ──
+    console.log("[RACV] Extracting premium...");
 
-    // Wait a bit more for quote calculation
-    await page.waitForTimeout(5000);
-    await page.screenshot({ path: "/tmp/racv-result.png", fullPage: true });
+    const resultText = await page.textContent("body") || "";
 
-    // Extract all text and look for dollar amounts
-    const pageContent = await page.textContent("body");
+    const pageHeadings = await page.locator("h1:visible, h2:visible, h3:visible").allTextContents();
+    console.log("[RACV] Page headings:", pageHeadings.filter(h => h.trim()).map(h => h.trim()).join(" | "));
 
-    // Look for premium patterns
-    const premiumPatterns = [
-      /\$([\d,]+(?:\.\d{2})?)\s*(?:per\s*year|\/\s*year|annually|p\.a\.|pa|\/yr)/i,
-      /(?:annual|yearly)\s*(?:premium|price|cost)[:\s]*\$([\d,]+(?:\.\d{2})?)/i,
-      /(?:estimated|indicative|your)\s*(?:premium|price|quote)[:\s]*\$([\d,]+(?:\.\d{2})?)/i,
-    ];
-
-    const monthlyPatterns = [
-      /\$([\d,]+(?:\.\d{2})?)\s*(?:per\s*month|\/\s*month|monthly|p\.m\.|pm|\/mo)/i,
-      /(?:monthly)\s*(?:premium|price|cost)[:\s]*\$([\d,]+(?:\.\d{2})?)/i,
-    ];
+    const allAmounts = resultText.match(/\$[\d,]+(?:\.\d{2})?/g) || [];
+    console.log(`[RACV] Dollar amounts found: ${allAmounts.join(", ")}`);
 
     let annualPremium: number | undefined;
     let monthlyPremium: number | undefined;
+    let excessAmount: number | undefined;
 
-    for (const pattern of premiumPatterns) {
-      const match = pageContent?.match(pattern);
-      if (match) {
-        annualPremium = parseFloat(match[1].replace(/,/g, ""));
-        break;
+    // Pattern matching for labeled premiums
+    const premPatterns = [
+      { pattern: /\$([\d,]+(?:\.\d{2})?)\s*(?:per\s*year|\/\s*year|annually|p\.a\.|\/yr|\/Yearly)/i, type: "annual" },
+      { pattern: /(?:annual|yearly)\s*(?:premium|price|cost)[:\s]*\$([\d,]+(?:\.\d{2})?)/i, type: "annual" },
+      { pattern: /\$([\d,]+(?:\.\d{2})?)\s*(?:per\s*month|\/\s*month|\/Monthly|monthly|p\.m\.|\/mo)/i, type: "monthly" },
+      { pattern: /(?:monthly)\s*(?:premium|price|cost)[:\s]*\$([\d,]+(?:\.\d{2})?)/i, type: "monthly" },
+    ];
+
+    for (const { pattern, type } of premPatterns) {
+      const m = resultText.match(pattern);
+      if (m) {
+        const amount = parseFloat(m[1].replace(/,/g, ""));
+        if (type === "monthly") {
+          monthlyPremium = amount;
+        } else {
+          annualPremium = amount;
+        }
       }
     }
 
-    for (const pattern of monthlyPatterns) {
-      const match = pageContent?.match(pattern);
-      if (match) {
-        monthlyPremium = parseFloat(match[1].replace(/,/g, ""));
-        break;
-      }
-    }
-
-    // If no labeled premium found, look for prominent dollar amounts (likely the quote)
+    // Fallback: look for amounts in reasonable ranges
     if (!annualPremium && !monthlyPremium) {
-      const allAmounts =
-        pageContent?.match(/\$([\d,]+(?:\.\d{2})?)/g) || [];
       const numericAmounts = allAmounts
-        .map((a) => parseFloat(a.replace(/[$,]/g, "")))
-        .filter((n) => n > 200 && n < 10000) // reasonable insurance range
-        .sort((a, b) => b - a);
+        .map(a => parseFloat(a.replace(/[$,]/g, "")))
+        .filter(n => !isNaN(n));
 
-      if (numericAmounts.length > 0) {
-        // Assume the largest reasonable amount is the annual premium
-        annualPremium = numericAmounts[0];
-        console.log(`[RACV Scraper] Inferred annual premium: $${annualPremium} (from dollar amounts on page)`);
-      }
+      const annualCandidates = numericAmounts.filter(n => n >= 300 && n <= 8000);
+      const monthlyCandidates = numericAmounts.filter(n => n >= 25 && n < 300);
+
+      if (annualCandidates.length > 0) annualPremium = annualCandidates[0];
+      if (monthlyCandidates.length > 0) monthlyPremium = monthlyCandidates[0];
+
+      const excessCandidates = numericAmounts.filter(n => [650, 800, 1000, 1500].includes(n));
+      if (excessCandidates.length > 0) excessAmount = excessCandidates[0];
     }
 
     if (annualPremium || monthlyPremium) {
-      console.log(
-        `[RACV Scraper] Found premium: annual=$${annualPremium}, monthly=$${monthlyPremium}`
-      );
+      console.log(`[RACV] Quote: annual=$${annualPremium}, monthly=$${monthlyPremium}`);
       return {
         success: true,
-        source: "racv_website",
+        vehicle_description: vehicleDesc,
         annual_premium: annualPremium,
         monthly_premium: monthlyPremium,
-        screenshot_path: "/tmp/racv-result.png",
+        excess_amount: excessAmount,
+        raw_amounts: allAmounts,
+        screenshot_path: "/tmp/racv-quote-result.png",
       };
     }
 
-    console.log("[RACV Scraper] Could not find premium on page.");
+    // Check for validation errors
+    const currentErrors = await page.locator("[class*='error']:visible, [class*='Error']:visible").allTextContents();
+    if (currentErrors.length > 0) {
+      return {
+        success: false,
+        vehicle_description: vehicleDesc,
+        error: `Form validation errors: ${currentErrors.filter(e => e.trim()).join(", ")}`,
+        step_reached: "about_you",
+        raw_amounts: allAmounts,
+        screenshot_path: "/tmp/racv-quote-result.png",
+      };
+    }
+
     return {
       success: false,
-      source: "racv_website",
-      error:
-        "Could not extract premium from page. The form may require additional fields or encountered an error. Screenshots saved for debugging.",
-      raw_text: pageContent?.slice(0, 1000),
-      screenshot_path: "/tmp/racv-result.png",
+      vehicle_description: vehicleDesc,
+      error: "Reached the end of the form but could not extract a premium. The page may require additional steps.",
+      step_reached: "quote_result",
+      raw_amounts: allAmounts,
+      screenshot_path: "/tmp/racv-quote-result.png",
     };
+
   } catch (error) {
-    console.error("[RACV Scraper] Error:", error);
+    console.error("[RACV] Error:", error);
     if (page) {
-      await page
-        .screenshot({ path: "/tmp/racv-error.png", fullPage: true })
-        .catch(() => {});
+      await page.screenshot({ path: "/tmp/racv-error.png", fullPage: true }).catch(() => {});
     }
     return {
       success: false,
-      source: "mock",
       error: `Scraper error: ${error instanceof Error ? error.message : String(error)}`,
       screenshot_path: "/tmp/racv-error.png",
     };
   } finally {
     if (page) {
       await page.close().catch(() => {});
+    }
+    if (context) {
+      await context.close().catch(() => {});
     }
   }
 }

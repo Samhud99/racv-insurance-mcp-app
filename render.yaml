@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: racv-insurance-mcp
+    runtime: node
+    plan: free
+    buildCommand: npm install --ignore-optional && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production

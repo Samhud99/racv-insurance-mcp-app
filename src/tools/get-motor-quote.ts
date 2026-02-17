@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { calculateQuote } from "../utils/quote-calculator.js";
-import { scrapeRacvQuote } from "../utils/racv-scraper.js";
 
 const USE_LIVE_SCRAPER = process.env.RACV_LIVE_QUOTES === "true";
 
@@ -51,6 +50,7 @@ export function registerGetMotorQuote(server: McpServer) {
       if (USE_LIVE_SCRAPER) {
         try {
           console.log("[Quote] Attempting live RACV website scrape...");
+          const { scrapeRacvQuote } = await import("../utils/racv-scraper.js");
           const scraped = await scrapeRacvQuote(quoteInput);
           if (scraped.success && scraped.annual_premium) {
             // Override mock premiums with real data

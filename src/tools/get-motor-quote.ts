@@ -117,10 +117,6 @@ export function registerGetMotorQuote(server: McpServer) {
 
       return {
         content: [{ type: "text", text: textSummary }],
-        structuredContent: {
-          type: "quote_result",
-          data: quote,
-        } as any,
       };
     }
   );

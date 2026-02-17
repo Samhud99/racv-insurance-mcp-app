@@ -54,21 +54,6 @@ export function registerStartFullQuote(server: McpServer) {
 
       return {
         content: [{ type: "text", text }],
-        structuredContent: {
-          type: "full_quote_redirect",
-          data: {
-            redirect_url: redirectUrl,
-            quote_id: params.quote_id,
-            parameters_prefilled: [
-              "vehicle_make",
-              "vehicle_model",
-              "vehicle_year",
-              "postcode",
-              "driver_age",
-            ],
-            session_validity: validUntil.toISOString(),
-          },
-        } as any,
       };
     }
   );

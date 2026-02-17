@@ -116,14 +116,6 @@ export function registerGetCoverage(server: McpServer) {
 
       return {
         content: [{ type: "text", text }],
-        structuredContent: {
-          type: "coverage_details",
-          data: {
-            area: params.coverage_area,
-            title: info.title,
-            details: info.details,
-          },
-        } as any,
       };
     }
   );

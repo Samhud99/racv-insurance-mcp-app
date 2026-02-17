@@ -36,15 +36,7 @@ app.use(express.json());
 
 app.use(
   cors({
-    origin: [
-      "https://chatgpt.com",
-      "https://chat.openai.com",
-      "https://claude.ai",
-      "https://gemini.google.com",
-      "http://localhost:3000",
-      "http://localhost:3001",
-      "http://localhost:5173",
-    ],
+    origin: true,
     methods: ["GET", "POST", "DELETE", "OPTIONS"],
     allowedHeaders: [
       "Content-Type",
